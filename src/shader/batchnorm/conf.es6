@@ -1,88 +1,44 @@
 /* eslint-disable */
 /**
  * @file batchnorm的配置文件
- * @author yangmingming
+ * @author wangqun
  */
 export default {
     dep: [
         {
-            func: 'getTexturePosFromArrayIndex',
+            func: 'getValueFromTensorPos',
             conf: {
-                TEXTURE_NAME: 'texture_origin',
-                TENSOR_TYPE: 'vec4'
+                TENSOR_NAME: 'origin'
             }
         },
         {
-            func: 'getValueFromTexturePos',
+            func: 'getPixelsFromTexturePos',
             conf: {
-                TEXTURE_NAME: 'texture_origin'
+                TEXTURE_NAME: 'texture_scale'
+            }
+        },
+        {
+            func: 'getPixelsFromTexturePos',
+            conf: {
+                TEXTURE_NAME: 'texture_bias'
+            }
+        },
+        {
+            func: 'getPixelsFromTexturePos',
+            conf: {
+                TEXTURE_NAME: 'texture_variance'
+            }
+        },
+        {
+            func: 'getPixelsFromTexturePos',
+            conf: {
+                TEXTURE_NAME: 'texture_mean'
             }
         },
         {
             func: 'getPixelsFromTexturePos',
             conf: {
                 TEXTURE_NAME: 'texture_origin'
-            }
-        },
-        {
-            func: 'moveTexture2PosToReal',
-            conf: {
-                TEXTURE_NAME: 'texture_out'
-            }
-        },
-        {
-            func: 'getArrayIndexFromTexturePos',
-            conf: {
-                TEXTURE_NAME: 'texture_out'
-            }
-        },
-        {
-            func: 'getTensorPosFromArrayIndex',
-            conf: {
-                TENSOR_NAME: 'out',
-                TENSOR_TYPE: 'vec4'
-            }
-        },
-        {
-            func: 'getArrayIndexFromTensorPos',
-            conf: {
-                TENSOR_NAME: 'origin',
-                TENSOR_TYPE: 'ivec4'
-            }
-        },
-        {
-            func: 'getRangeSumFromArrayIndex',
-            conf: {
-                TEXTURE_NAME: 'texture_origin',
-                TENSOR_NAME: 'origin'
-            }
-        },
-
-        {
-            func: 'getRangePowSumFromArrayIndex',
-            conf: {
-                TEXTURE_NAME: 'texture_origin',
-                TENSOR_NAME: 'origin'
-            }
-        },
-
-        {
-            func: 'getTexturePosFromArrayIndex',
-            conf: {
-                TEXTURE_NAME: 'texture_scale',
-                TENSOR_TYPE: 'vec4'
-            }
-        },
-        {
-            func: 'getValueFromTexturePos',
-            conf: {
-                TEXTURE_NAME: 'texture_scale'
-            }
-        },
-        {
-            func: 'getValueFromTexturePos',
-            conf: {
-                TEXTURE_NAME: 'texture_bias'
             }
         }
     ],
@@ -97,16 +53,20 @@ export default {
 
         'WIDTH_SHAPE_OUT',
         'HEIGHT_SHAPE_OUT',
-        'LENGTH_SHAPE_OUT',
         'WIDTH_TEXTURE_OUT',
         'HEIGHT_TEXTURE_OUT',
         'CHANNEL_OUT',
+        'OFFSET_Y_OUT',
 
         'EPSILON',
         'WIDTH_TEXTURE_SCALE',
         'HEIGHT_TEXTURE_SCALE',
         'WIDTH_TEXTURE_BIAS',
         'HEIGHT_TEXTURE_BIAS',
+        'WIDTH_TEXTURE_MEAN',
+        'HEIGHT_TEXTURE_MEAN',
+        'WIDTH_TEXTURE_VARIANCE',
+        'HEIGHT_TEXTURE_VARIANCE',
         'MULTI_VALUE',
         'BIAS_VALUE',
         'ACTIVE_FUNCTION'
@@ -125,22 +85,22 @@ export default {
             type: 'texture'
         },
         {
-            tensor: 'origin',
+            tensor: 'mean',
+            variable: 'texture',
+            setter: 'initTexture',
+            type: 'texture'
+        },
+        {
+            tensor: 'variance',
             variable: 'texture',
             setter: 'initTexture',
             type: 'texture'
         },
         {
             tensor: 'origin',
-            variable: 'numbers_shape',
-            setter: 'uniform1iv',
-            type: 'uniform'
-        },
-        {
-            tensor: 'out',
-            variable: 'numbers_shape',
-            setter: 'uniform1iv',
-            type: 'uniform'
+            variable: 'texture',
+            setter: 'initTexture',
+            type: 'texture'
         }
     ]
 };

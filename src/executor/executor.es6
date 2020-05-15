@@ -3,19 +3,18 @@
  * @file GraphExecutor，封装可执行单元
  * @author wangqun@baidu.com
  */
-let first = true;
+// const fileDownload = require('js-file-download');
 let start;
-let end;
-let actions = {};
 export default class GraphExecutor {
 
     constructor(model) {
         this.inputs = model.inputs;
         this.outputs  = model.outputs;
-        this.attrs = model.attrs;
+        this.attrs = model.attrs || model['sub-attrs'];
         this.type = model.type;
         this.finish = false;
         this.next = null;
+        this.opData = null;
         this.id = +new Date() + model.type + Math.floor(Math.random() * 10 + 1) + model.idx;
     }
 
@@ -24,7 +23,7 @@ export default class GraphExecutor {
         if (this.type === 'feed') {
             return this.inputs.X;
         }
-        else if (this.type === 'batchnorm') {
+        else if (this.type === 'batchnorm' || this.type === 'batch_norm') {
             return this.inputs.X;
         }
         else if (this.type === 'conv2d') {
@@ -33,10 +32,16 @@ export default class GraphExecutor {
         else if (this.type === 'depthwise_conv2d') {
             return this.inputs.Input;
         }
+        else if (this.type === 'conv2d_transpose') {
+			return this.inputs.Input;
+		}
         else if (this.type === 'elementwise_add') {
-            return this.inputs.X;
+            return this.inputs.X.concat(this.inputs.Y);
         }
-        else if (this.type === 'relu') {
+        else if (this.type === 'concat') {
+            return this.inputs.X.concat(this.inputs.Y);
+        }
+        else if (this.type === 'relu' || this.type === 'leaky_relu') {
             return this.inputs.X;
         }
         else if (this.type === 'pool2d') {
@@ -54,47 +59,64 @@ export default class GraphExecutor {
         else if (this.type === 'fetch') {
             return this.inputs.X;
         }
-        return null;
+        return this.inputs.Input || this.inputs.X;
     }
 
     get outputsName() {
-        if (this.type === 'conv2d') {
+        if (this.outputs.Output) {
+            return this.outputs.Output;
+        }
+        else if (this.outputs.out) {
+            return this.outputs.out;
+        }
+        else if (this.type === 'conv2d') {
             return this.outputs.Output;
         }
         else if (this.type === 'depthwise_conv2d') {
             return this.outputs.Output;
         }
-        else if (this.type === 'batchnorm') {
+        else if (this.type === 'batchnorm' || this.type === 'batch_norm') {
             this.outputs.out = this.outputs.Y;
-            return this.outputs.Y;
+            delete this.outputs.Y;
+            return this.outputs.out;
         }
+		else if (this.outputs.Y) {
+			this.outpus.out = this.outputs.Y;
+			return this.outputs.out;
+		}
         else {
-            return this.outputs.Out;
+            return this.outputs.Out || this.outputs.Output;
         }
 
     }
 
-    execute(inputs, outputs, runtime) {
-        console.log(inputs, outputs);
+    /**
+     * 将输入数据和具体op进行关联，触发执行具体每一个op
+     * @param runtime
+     * @param isRendered
+     */
+    execute(runtime, isRendered) {
+        // console.log(inputs, outputs);
         if (this.type !== 'feed') {
-            runtime.run(this.type, inputs);
-            if (this.type === 'scale') {
-                console.log('时间是：' + (+Date.now() - start));
-            }
+            // let time = +Date.now();
+            // log.start(this.opData.iLayer + '-' + this.type);
+            runtime.run(this.type, this.opData, isRendered);
+            // log.end(this.opData.iLayer + '-' + this.type);
+            // if (runtime.gpu.frameBufferIsComplete().isComplete) {
+            //     var result = runtime.read();
+            //     let res = Array.prototype.slice.call(result);
+            //     fileDownload(res, "result.csv");
+            // }
+            // let length = statistic.length;
+            // statistic[length - 1].type = this.type;
+            // statistic[length - 1].runTime = +Date.now() - time;
+            // if (this.type === 'scale') {
+            //     console.log('时间是：' + (+Date.now() - start));
+            // }
         } else {
             start = +Date.now();
         }
-        // actions[this.type] = actions[this.type] || 0;
-        // if ((this.type === 'conv2d' && actions[this.type] < 3) ||
-        //     (this.type === 'elementwise_add' && actions[this.type] === 0) ||
-        //     (this.type === 'relu' && actions[this.type] === 0) ||
-        //     (this.type === 'pool2d' && actions[this.type] === 0)) {
-        //     actions[this.type] += 1;
-        //     console.log(inputs, outputs);
-        //     runtime.run(this.type, inputs);
-        // }
     }
-
 }
 
 /* eslint-enable */

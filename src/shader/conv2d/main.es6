@@ -6,48 +6,43 @@
 export default `
     // start函数
     void main(void) {
-        vec2 v2;
-        v2.x = vCoord.x;
-        v2.y = vCoord.y;
-        // 获取原始长度
-        vec2 outCoord = moveTexture2PosToReal_texture_out(v2);
-        // 输出数据
-        vec4 v4;
-        for (int i = 0; i < 4; i++) {
-            int n = getArrayIndexFromTexturePos_texture_out(vec3(outCoord.x, outCoord.y, float(i)));
-            // 获取output的坐标
-            ivec4 outPos = getTensorPosFromArrayIndex_out(n);
-    
-            // X、Y方向的移动步长
-            int disX = -padLeft;
-            int disY = -padTop;
-            for (int fy = 0; fy < height_shape_filter; fy++) {
-                int oy = (outPos[2] * stride_v) + (fy * dilation_v + disY);
-                for (int fx = 0; fx < width_shape_filter; fx++) {
-                    int ox = (outPos[3] * stride_h) + (fx * dilation_h + disX);
-                    if (oy >= 0 && oy < (height_shape_origin) && ox >= 0 && ox < (width_shape_origin)) {
-                        // channel计算
-                        for (int j = 0; j < channel_filter; j++) {
-                            // filter数据
-                            int fIndex = getArrayIndexFromTensorPos_filter(ivec4(outPos[1], j, fy, fx));
-                            vec3 fPos = getTexturePosFromArrayIndex_texture_filter(fIndex);
-                            // origin数据, channel需要和groups适配
-                            int oIndex = getArrayIndexFromTensorPos_origin(ivec4(outPos[0], int(floor(float(outPos[1]) / float(channel_out / groups))) * channel_filter + j, oy, ox));
-                            vec3 oPos = getTexturePosFromArrayIndex_texture_origin(oIndex);
-                            v4[i] += (getValueFromTexturePos_texture_filter(fPos) *
-                                getValueFromTexturePos_texture_origin(oPos));
-                        }
-                    }
-                }
+        ivec4 oPos = getOutputTensorPosLIMIT_OUT();
+        int x = oPos.a;
+        int c = oPos.g;
+        int y = oPos.b;
+        int b = oPos.r; 
+        float res = 0.0;
+
+        // 获取output的坐标
+        int oTensorChannel = (c / (channel_out / groups)) * channel_filter;
+        int oy = y * stride_v - padTop;
+        for (int fy = 0; fy < height_shape_filter; fy++) {
+            if (oy >= height_shape_origin) {
+                break;
             }
+            if (oy < 0) {
+                oy += dilation_v;
+                continue;
+            }
+            int ox = x * stride_h - padLeft;
+            for (int fx = 0; fx < width_shape_filter; fx++) {
+                if (ox >= width_shape_origin) {
+                    break;
+                }
+                if (ox < 0) {
+                    ox += dilation_h;
+                    continue;
+                }
+                // channel计算
+                for (int j = 0; j < channel_filter; j++) {
+                    float f = getValueFromTensorPosLIMIT_FILTER_filter(c, j, fy, fx);
+                    float o = getValueFromTensorPosLIMIT_ORIGIN_origin(b, oTensorChannel + j, oy, ox);
+                    res += f * o;
+                }
+                ox += dilation_h;
+            }
+            oy += dilation_v;
         }
-        // 激活函数
-        v4 = vec4(
-            ACTIVE_FUNCTION(v4.r, multi_value, bias_value),
-            ACTIVE_FUNCTION(v4.g, multi_value, bias_value),
-            ACTIVE_FUNCTION(v4.b, multi_value, bias_value),
-            ACTIVE_FUNCTION(v4.a, multi_value, bias_value)
-        );
-        gl_FragColor = v4;
+        setOutput(res);
     }
 `;

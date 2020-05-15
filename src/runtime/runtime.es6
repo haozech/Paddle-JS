@@ -1,18 +1,18 @@
-import Utils from '../utils/utils';
+/* eslint-disable */
 import Gpu from '../gpu/gpu';
-import Tensor from '../utils/tensor';
-import OpData from '../utils/opData';
+import getMaxUniforms from '../test/getMaxUniforms';
 import Factory from '../factory/fshader/factory';
-import VSHADER from '../shader/v_shader';
+<<<<<<< HEAD
+=======
+// import {getTextureShapeInfo} from '../utils/opData';
+// 生成factory实例
+// const factory = new Factory({});
+>>>>>>> 6c40834f2e1ff1fcfd564d2aeaa1f4c2724fe8ee
 /**
  * @file gpu运行时
- * @author yangmingming
+ * @author wangqun@baidu.com, yangmingming@baidu.com
  *
  */
-// 生成factory实例
-const factory = new Factory({});
-// 获取op的输入配置
-const opConfs = factory.getOpConfs();
 export default {
     /**
      * 初始化, 生成gpu实例
@@ -28,68 +28,94 @@ export default {
         }
     },
 
-    run(opName, data) {
-        // 生成op的数据
-        const  opData = this.adaptData(opName, data);
+    getWebglVersion() {
+        return this.gpu.getWebglVersion();
+    },
+
+<<<<<<< HEAD
+    getWebglMaxTextureSize() {
+        return this.gpu.maxTextureSize();
+    },
+
+    getWebglMaxTextureImageUnits() {
+        return this.gpu.maxTextureImageUnits();
+    },
+
+=======
+>>>>>>> 6c40834f2e1ff1fcfd564d2aeaa1f4c2724fe8ee
+    run(opName, opData, isRendered) {
+        // console.dir(['fscode', opData.fsCode]);
+        // let time = +Date.now();
+        // let start = time;
+        // let timeObj = {};
         if (!opData.isPass) {
             console.log('跳过当前op：' + opName);
             return this;
         }
         // 设置gpu参数
         const gpu = this.gpu;
-        gpu.setOutProps(opData.tensor['out']);
-        // 生成shader
-        const fsCode = factory.buildShader(opData.name, opData.data);
-        console.dir([opData.name + ', shaderCode shader', fsCode]);
-        // 生成帧缓存材质
-        const texture = gpu.makeTexure(WebGLRenderingContext.FLOAT, null);
-        gpu.attachFrameBuffer(texture, opData.data);
-        let bufferStatus = gpu.frameBufferIsComplete();
-        if (bufferStatus.isComplete) {
-            // console.log(bufferStatus.isComplete);
-            gpu.create(VSHADER, fsCode);
-            // console.dir(['测试数据---输入参数', data]);
-            // 开始计算
-            this.compute(opData.name, opData);
-            return this;
-        } else {
-            return bufferStatus.message;
-        }
-    },
+        opData.program.forEach((program, index) => {
+            const outTensor = opData.outputTensors[index];
+            const outTensorId = outTensor.tensorId;
+            gpu.setOutProps(outTensor);
+            // 生成帧缓存材质
+            gpu.attachFrameBuffer(opData.iLayer, outTensorId);
+            // let end = +Date.now();
+            let bufferStatus = gpu.frameBufferIsComplete();
+            // if (bufferStatus.isComplete) {
+                // start = +Date.now();
+                // timeObj['buferstatus-time'] = start - end;
+                // gpu.attachShader(opData.fshader);
 
-    /**
-     * 计算op
-     *
-     * @param {Object} opts 输入数据
-     */
-    compute(opName, opts = {}) {
-        // 配置op的输入数据
-        const data = opConfs[opName].map(item => {
-            const tensor = opts.tensor[item.tensor];
-            if (item.type === 'texture') {
-                item.data = tensor.data;
-                item['width_texture'] = tensor['width_texture'];
-                item['height_texture'] = tensor['height_texture'];
-            } else if (item.type === 'uniform') {
-                item.data = tensor[item.variable];
-            }
-            return item;
+                gpu.setProgram(program, isRendered);
+                // end = +Date.now();
+                // timeObj['createshader-time'] = end - start;
+                // timeObj['jsTime'] = end - time;
+                // statistic.push(timeObj);
+
+
+                // 开始计算，执行 gl.drawArrays
+                this.gpu.render(opData.renderData, opData.iLayer, isRendered);
+             // }
         });
+<<<<<<< HEAD
 
-        this.gpu.render(data);
+=======
+>>>>>>> 6c40834f2e1ff1fcfd564d2aeaa1f4c2724fe8ee
     },
 
     /**
      * 读取op计算结果, 并返回数据
      */
-    read() {
-        return this.gpu.compute();
-        // return Utils.shapeData(this.gpu.compute(), [4, 1, 3, 3]);
+    read2() {
+        let bufferStatus = this.gpu.frameBufferIsComplete();
+        if (bufferStatus.isComplete) {
+
+            return this.gpu.compute();
+        }
+        return null;
     },
 
-    adaptData(opName, data = {}) {
-        const opData = new OpData(opName, data.inputs, data.outputs, data.attrs);
-        return opData;
+    async read() {
+        const pbo = this.gpu.createPBO();
+        await this.gpu.createAndWaitForFence();
+        // log.end('运行耗时');
+        // log.start('后处理');
+        // 其实这里应该有个fetch的执行调用或者fetch的输出
+        // log.start('后处理-读取数据');
+        // 开始读数据
+        // window.log.end('执行时间');
+        return this.gpu.downloadFoat32TensorFromBuffer(pbo);
+    },
+
+    createProgram(fsCode, outTensor) {
+        const fshader = this.gpu.initShader(fsCode, 'fragment');
+        const program = this.gpu.createProgram(fshader, outTensor);
+        // test uniforms的个数
+        // const maxUniforms = getMaxUniforms(this.gpu.gl, program);
+        // alert(maxUniforms.maxFragmentShader);
+        // console.table(maxUniforms.uniforms);
+        return program;
     },
 
     // 释放资源

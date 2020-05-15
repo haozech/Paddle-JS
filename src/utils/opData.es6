@@ -19,6 +19,9 @@ const tensorAttrs = [
     'height_shape',
     'width_texture',
     'height_texture',
+    'offset_x',
+    'offset_y',
+    'limit',
     'channel',
     'total_shape'
 ];
@@ -30,9 +33,12 @@ const shaderAttrs = {
     },
     pool2d: {
         'pooling_type': 'type_pool'
+    },
+    pool2d_winograd: {
+        'pooling_type': 'type_pool'
     }
 };
-// model的名字和paddle web的tensor名字mapping
+// model的名字和paddleJS的tensor名字mapping
 const tensorName = {
     'input': 'origin',
     'x': 'origin',
@@ -41,54 +47,145 @@ const tensorName = {
     'output': 'out',
     'out': 'out',
     'scale': 'scale',
-    'bias': 'bias'
+    'bias': 'bias',
+    'mean': 'mean',
+    'variance': 'variance'
 };
 // unique behavior
 const opBehavior = {
     conv2d: [
-        'needBatch'
+        'needBatch',
+        'isApplySeparableConv'
     ],
+	conv2d_transpose: [
+		'needBatch'
+	],
     batchnorm: [
-        'needBatch'
+        'needBatch',
+        'mergeTensor'
     ],
     elementwise_add: [
-        'broadcast'
+		'processAxis',
+        'needBatch'
+    ],
+    conv2d_elementwise_add: [
+        'mergeAttrs',
+        'setActiveFunc',
+        'needBatch'
     ],
     pool2d: [
         'isMax',
-        'needBatch'
+        'needBatch',
+        'setPacked',
+        'isGlobalPooling'
     ],
     relu: [
-        'transToPrelu'
+        'transToPrelu',
+        'needBatch'
+    ],
+    relu6: [
+        'transToRelu6',
+        'needBatch'
+    ],
+    leaky_relu: [
+        'transToLeakyrelu',
+        'needBatch'
     ],
     mul: [
         'reshape',
         'needBatch'
-    ]
+    ],
+    bilinear_interp:[
+        'needBatch'
+    ],
+	reshape2: [
+		'needBatch',
+		'inferShape'
+	],
+	transpose2: [
+		'needBatch',
+		'setPerm'
+	],
+    concat: [
+        'normalizeDim',
+        'needBatch'
+    ],
+    split: [
+        'normalizeDim',
+        'needBatch'
+    ],
+    softmax: [
+        'needBatch'
+    ],
+    scale: [
+        'needBatch'
+    ],
 };
+const mergeType = 'conv2d-elementwise_add';
+
 export default class OpData {
     constructor(name, input = {}, output = {}, attrs = {}) {
+<<<<<<< HEAD
+=======
+        // console.dir(this);
+>>>>>>> 6c40834f2e1ff1fcfd564d2aeaa1f4c2724fe8ee
+        this.realName = name;
         this.name = name;
+        this.attrs = attrs;
+        // 检查是否是融合op
+        this.checkIsMerge();
         // 是否忽略当前当前op, 使用dropout
+        // dropout是指在深度学习网络的训练过程中,对于神经网络单元,按照一定的概率将其暂时从网络中丢弃。
         this.isPass = this.checkIsPass();
         if (this.isPass) {
             this.input = input;
             this.output = output;
-            this.attrs = attrs;
             // op数据, 当前不扩展
             this.data = {
                 'active_function': 'scale',
                 'multi_value': '1.0',
                 'bias_value': '0.0'
             };
+
             // tensor数据
-            this.tensor = {};
+            this.inputTensors = [];
+            this.outputTensors = [];
+            this.fShaderParams = [];
             this.buildTensor();
-            this.buildAttrs();
+            this.buildShaderParams();
         }
     }
 
+    inferShape(){
+		if (this.name == 'reshape2'){
+			let inputShape = this.input.X[0].shape;
+			let targetShape = this.attrs.new_shape;
+			for (let i = 0; i < targetShape.length; i++){
+				if (targetShape[i] == 0) {
+					targetShape[i] = inputShape[i];
+            	}
+        	}
+			let total_length = 1;
+			for (let j = 0;j < inputShape.length; j++){
+				total_length *= inputShape[j];
+			}
+			let minusPos = -1;
+			for (let i = 0; i < targetShape.length; i++){
+				if (targetShape[i] == -1) {
+					minusPos = i;
+					continue;
+            	}
+            	total_length /= targetShape[i];
+        	}
+        	if (minusPos != -1) {
+				targetShape[minusPos] = total_length;
+			}
+			this.output.Out[0].shape = targetShape;
+		}
+	}
+
     buildTensor() {
+
         // todo: 是否需要形状对齐
         // todo: 是否需要广播tensor
         const tensorData = [];
@@ -98,19 +195,28 @@ export default class OpData {
                 // 默认取第一个数据
                 if (tensorName[key.toLowerCase()]) {
                     data[0].tensorName = tensorName[key.toLowerCase()];
+                    tensorData.push(data[0]);
                 }
-                tensorData.push(data[0]);
             }
         }
+        // debugger
+        // todo: 临时删除output里的Y
+        delete this.output.Y;
         // 输出tensor
         for (let key in this.output) {
             if (this.output.hasOwnProperty(key)) {
                 // 默认取第一个数据
                 const data = this.output[key] || [{}];
                 if (tensorName[key.toLowerCase()]) {
-                    data[0].tensorName = tensorName[key.toLowerCase()];
+<<<<<<< HEAD
+=======
+                    // console.dir(this);
+>>>>>>> 6c40834f2e1ff1fcfd564d2aeaa1f4c2724fe8ee
+                    data.forEach(item => {
+                        item.tensorName = tensorName[key.toLowerCase()];
+                        tensorData.push(item);
+                    });
                 }
-                tensorData.push(data[0]);
             }
         }
         // unique behavior
@@ -118,27 +224,48 @@ export default class OpData {
         behavior.forEach(behavior => {
             this[behavior](tensorData);
         });
+
         // 生成tensor对象
         tensorData.forEach(data => {
-            this.tensor[data.tensorName] = new Tensor({
-                name: data.tensorName,
-                shape: data.shape,
-                data: data.data,
-                needBatch: data.needBatch || false
-            });
+            if (data) {
+                let tensor = null;
+                const tensorName = data.tensorName;
+                if (data.notTensor) {
+                    tensor = {
+                        name: tensorName,
+                        data: new Float32Array(data.data),
+                        total_shape: data.data.length
+                    };
+                } else {
+                    tensor = new Tensor({
+                        type: data.name,
+                        name: tensorName,
+                        shape: data.shape,
+                        data: data.data,
+                        needBatch: data.needBatch || false,
+                        notCompressed: data.notCompressed || false,
+                        isPacked: data.isPacked || false
+                    });
+                }
+
+                if (tensorName === 'out') {
+                    this.outputTensors.push(tensor);
+                }
+                else {
+                    this.inputTensors.push(tensor);
+                }
+            }
         });
     }
 
-    buildAttrs() {
+    buildShaderParams() {
         // 计算属性
         for (let key in this.attrs) {
             if (this.attrs.hasOwnProperty(key)) {
                 const item = this.attrs[key];
-                if (Object.prototype.toString.call(item) === '[object Array]') {
-                    if (keys.indexOf(key) > -1) {
-                        this.data[key + '_x'] = item[0];
-                        this.data[key + '_y'] = item[1];
-                    }
+                if (Object.prototype.toString.call(item) === '[object Array]' && keys.indexOf(key) > -1) {
+                    this.data[key + '_x'] = item[0];
+                    this.data[key + '_y'] = item[1];
                 } else {
                     this.data[key] = item;
                     // 获取shader所需的数据
@@ -149,51 +276,144 @@ export default class OpData {
                 }
             }
         }
-        // 获取tensor的数据
-        for (let key in this.tensor) {
-            const tensor = this.tensor[key];
+        // 遍历 获取input tensor的数据
+        this.inputTensors.forEach(inputTensor => {
             tensorAttrs.forEach(attr => {
-                this.data[attr+ '_' + tensor.name] = tensor[attr];
+                this.data[attr+ '_' + inputTensor.name] = inputTensor[attr];
             });
-        }
+        });
+
+        // 根据out tensor 个数 生成对应的 fShader 个数
+        this.outputTensors.forEach(outTensor => {
+            const params = JSON.parse(JSON.stringify(this.data));
+            // 获取output tensor的数据
+
+            tensorAttrs.forEach(attr => {
+                params[attr+ '_' + outTensor.name] = outTensor[attr];
+            });
+            this.fShaderParams.push(params);
+        });
+
     }
 
     needBatch(tensorData = []) {
         tensorData.forEach(data => (data.needBatch = true));
     }
 
-    enlargeValue(tensorData = []) {
-        let filter = tensorData[0] || [];
-        tensorData[0].data = filter.data.map(value => 10000.0 * value);
+	setPerm(tensorData = []){
+		let arrayPerm = this.attrs['axis'];
+		let l = arrayPerm.length;
+		if (l == 3) {
+			if (arrayPerm == [2,0,1]) {
+				arrayPerm = [1,2,0];
+		}
+			else if (arrayPerm == [1,2,0]){
+				arrayPerm = [2,0,1];
+		}
+		}
+		else if (l == 4){
+			let temp = [0,0,0,0];
+			for (let i = 0; i < 4; i++){
+				temp[[arrayPerm[i]]] = i;
+			}
+			arrayPerm = temp;
+		}
+		this.data['perm_0'] = 0;
+		this.data['perm_1'] = 0;
+		this.data['perm_2'] = 0;
+		this.data['perm_3'] = 0;
+		if (l >= 1) {
+			this.data['perm_0'] = arrayPerm[0];
+		}
+		if (l >= 2) {
+			this.data['perm_1'] = arrayPerm[1];
+		}
+		if (l >= 3) {
+			this.data['perm_2'] = arrayPerm[2];
+		}
+		if (l >= 4) {
+			this.data['perm_3'] = arrayPerm[3];
+		}
+		this.data['perm_size'] = l;
+	}
+
+    isGlobalPooling(tensorData = []) {
+        let counter = tensorData.filter(tensor => (tensor.tensorName === 'origin'))[0] || {};
+        let length = counter.shape && counter.shape.length || 0;
+        if (length > 2 && this.attrs['global_pooling']) {
+            this.attrs.ksize = [counter.shape[length - 2], counter.shape[length - 1]];
+        }
     }
 
-    broadcast(tensorData = []) {
-        const x = tensorData[0];
-        const y = tensorData[1];
-        let small = y;
-        if (x.shape.length - y.shape.length < 0) {
-            small = x;
+    mergeAttrs() {
+        this.attrs = this.attrs.reduce((attrs, item) => {
+            return Object.assign(attrs, item);
+        }, {});
+    }
+
+
+    isApplyWinoGrad(tensorData = []) {
+        const filter = tensorData.filter(item => {
+            const [b, c, h, w] = item.shape;
+            return (h === 3) && (w === 3) && (item.tensorName === 'filter');
+        });
+        // 使用winograd算法
+        if (filter && filter.length) {
+            this.setPacked(tensorData);
+            this.applyWinograd(tensorData);
+            this.setOutputPacked(tensorData);
+            this.name += '_winograd';
         }
-        // todo: 默认y的shape length是1, 以后需要实现通用版本
-        let shape = Utils.getBroadcastShapeInPaddle(x.shape, y.shape, this.attrs['axis']);
-        // 填充shape数据
-        if (small.shape.length === 1) {
-            const result = [];
-            small.shape = shape;
-            let total = shape.reduce((all, num) => all * num);
-            for (let i = 0; i < small.shape[0]; i++) {
-                let item = small.data[i];
-                for (let j = 0; j < total / shape[0]; j++) {
-                    result.push(item);
+    }
+
+    isApplySeparableConv(tensorData = []) {
+        const groups = this.attrs.groups;
+        const filter = tensorData.filter(item => {
+            const [b, c, h, w] = item.shape;
+            return (b === groups) && (c === 1) && (item.tensorName === 'filter');
+        });
+        if (filter && filter.length) {
+            // 可以执行separable conv
+            this.name += '_depthwise';
+        }
+    }
+
+    setPacked(tensorData = []) {
+        const isPacked = this.attrs.ispacked;
+        tensorData.forEach(item => {
+            if (item.tensorName === 'origin' && isPacked) {
+                item.isPacked = true;
+                if (this.name.indexOf('pool') > -1) {
+                    this.name += '_winograd';
                 }
             }
-            small.data = result;
-        }
+        });
+    }
+
+    applyWinograd(tensorData = []) {
+        tensorData.forEach(item => {
+            if (item.tensorName === 'filter') {
+                const [b, c, h, w] = item.shape;
+                item.shape = [b, c, 4, 4];
+                item.data = Utils.applyFilterWinograd(item.data, item.shape);
+            }
+        });
+    }
+
+    setOutputPacked(tensorData = []) {
+        tensorData.forEach(item => {
+            if (item.tensorName === 'out') {
+                item.isPacked = true;
+            }
+        });
     }
 
     isMax(tensorData = []) {
         const type = this.attrs['pooling_type'] === 'max' ? 1 : 0;
         this.attrs['pooling_type'] = type;
+        if (type === 1) {
+            this.name += '_max';
+        }
     }
 
     transToPrelu(tensorData = []) {
@@ -201,11 +421,63 @@ export default class OpData {
         this.data['active_function'] = 'prelu';
     }
 
-    setActiveFunc(tensorData = []) {
-        this.data['multi_value'] = '0.0';
-        this.data['active_function'] = 'softmax';
-
+    transToRelu6(tensorData = []) {
+        this.data['multi_value'] = this.attrs['threshold'];
+        this.data['active_function'] = 'relu6';
     }
+
+    transToLeakyrelu(tensorData = []) {
+        this.data['multi_value'] = this.attrs.alpha;
+        this.data['active_function'] = 'leakyRelu';
+        this.name = 'relu';
+    }
+
+    setActiveFunc() {
+        // 用于融合op
+        const suffix = this.realName.replace(mergeType + '-', '');
+        if (suffix === 'leaky_relu') {
+            this.data['multi_value'] = this.attrs.alpha;
+            this.data['active_function'] = 'leakyRelu';
+        }
+    }
+
+    normalizeDim() {
+        let origin_shape_temp = this.input.X[0].shape;
+        if (origin_shape_temp.length < 4) {
+            let batch = [];
+            for (let i = 0; i < (4 - origin_shape_temp.length); i++) {
+                batch.push(1);
+            }
+            origin_shape_temp = batch.concat(origin_shape_temp);
+        }
+        const origin_shape = origin_shape_temp;
+        const axis = this.attrs.axis > -1 ? this.attrs.axis : origin_shape.length + this.attrs.axis;
+        const dim_value = [];
+        for (let index = 0; index < origin_shape[axis]; index++) {
+            dim_value[index] = index;
+        }
+        this.attrs.target_length = dim_value.length;
+        this.attrs.target_value = dim_value;
+        // 保存 输入 tensor 对应dim 的长度
+<<<<<<< HEAD
+        this.attrs.inputs_dim = origin_shape[axis];
+=======
+        this.attrs.inputs_dim = [origin_shape[axis]];
+>>>>>>> 6c40834f2e1ff1fcfd564d2aeaa1f4c2724fe8ee
+        this.attrs.dim = 4 - origin_shape.length + axis;
+    }
+
+    processAxis() {
+		let shape_x = this.input.X[0].shape;
+        let shape_y = this.input.Y[0].shape;
+        let axis_temp = this.attrs['axis'];
+        if (axis_temp == -1) {
+            this.attrs['axis'] = shape_x.length - shape_y.length;
+        }
+        else {
+            this.attrs['axis'] = 4 - shape_y.length - axis_temp;
+        }
+	}
 
     reshape(tensorData = []) {
         let input = tensorData[0];
@@ -219,6 +491,46 @@ export default class OpData {
             input.shape = shape;
         }
 
+    }
+
+    mergeTensor(tensorData = []) {
+        // 融合scale、bias、variance、mean
+
+        let constants = ['scale', 'bias', 'variance', 'mean'];
+        let result = {};
+        let data = [];
+        tensorData.forEach((tensor, index) => {
+            result[tensor.tensorName] = tensor;
+            result[tensor.tensorName + 'Index'] = index;
+        });
+
+     //   for (let i = 0; i < result[constants[0]].shape[0]; i++) {
+      //      data.push(result[constants[0]].data[i]);
+      //      data.push(result[constants[1]].data[i]);
+     //       data.push(result[constants[2]].data[i]);
+      //      data.push(result[constants[3]].data[i]);
+      //  }
+
+        // tensorData[result[constants[0] + 'Index']].data = data;
+        for (let i = 0; i < constants.length; i++){
+            tensorData[result[constants[i] + 'Index']].data = result[constants[i]].data;
+        }
+        // 充分利用shader空间
+        //tensorData[result[constants[0] + 'Index']].notCompressed = true;
+       // tensorData[result[constants[0] + 'Index']].shape[0] *= 4;
+        //tensorData.splice(result[constants[1] + 'Index'], 1, 0);
+        //tensorData.splice(result[constants[2] + 'Index'], 1, 0);
+        //tensorData.splice(result[constants[3] + 'Index'], 1, 0);
+    }
+
+    checkIsMerge() {
+        if (this.name.indexOf(mergeType) > -1
+            && Object.prototype.toString.apply(this.attrs) === '[object Array]') {
+            // 第一个融合op
+            this.name  = 'conv2d_elementwise_add';
+            return true;
+        }
+        return false;
     }
 
     checkIsPass() {
